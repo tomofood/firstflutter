@@ -1,52 +1,53 @@
 name: Build Android APK
 
-# 定义触发工作流的条件
 on:
-  # 手动触发，方便测试
   workflow_dispatch:
-  # 当代码推送到 main 分支时自动触发
   push:
-    branches: [ master ]
-  # 当有指向 main 分支的 PR 时触发
+    branches: [ main, master ]
   pull_request:
-    branches: [ master ]
+    branches: [ main, master ]
 
-# 定义要执行的任务
 jobs:
   build-android:
-    # 构建环境使用最新的 Ubuntu
     runs-on: ubuntu-latest
     
-    # 步骤列表
     steps:
-      # 1. 拉取你的代码仓库
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Java 环境 (Flutter Android 构建所必需)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 3. 设置 Flutter 环境 (核心步骤)
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable' # 使用稳定版Flutter
+          flutter-version: '3.19.0'  # 使用稳定版本，避免3.41.7
+          channel: 'stable'
 
-      # 4. 获取项目依赖
       - name: Get dependencies
         run: flutter pub get
 
-      # 5. 开始构建 APK
-      # 构建 debug 版使用: flutter build apk --debug
-      # 构建 release 版使用: flutter build apk --release
+      # 关键：清理并重新生成 Riverpod 代码
+      - name: Clean old generated files
+        run: |
+          rm -f lib/providers/*.g.dart
+          flutter clean
+
+      - name: Generate Riverpod code
+        run: |
+          flutter pub get
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - name: Build Android APK
         run: flutter build apk --release
 
-      # 6. (可选) 将生成的APK文件上传为工作流产物，方便下载
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
