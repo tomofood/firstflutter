@@ -13,14 +13,16 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: currentIndex,
-        children: [
-          Text('home view'),
-          Text('category view'),
-          Text('cart view'),
-          MineView(),
-        ],
+      body: SafeArea(
+        child: IndexedStack(
+          index: currentIndex,
+          children: const [
+            Text('home view'),
+            Text('category view'),
+            Text('cart view'),
+            MineView(),
+          ],
+        ),
       ),
       bottomNavigationBar: _createBottomNavigationBar(),
     );
