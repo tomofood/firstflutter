@@ -22,7 +22,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.22.5'  # 使用稳定的新版本，支持 Dart 3.4+
           channel: 'stable'
 
       - name: Clean and get dependencies
