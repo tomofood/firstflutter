@@ -20,6 +20,7 @@ dependencies:
   cached_network_image: ^3.3.0
   shared_preferences: ^2.2.2
   sqflite: ^2.4.1
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -35,3 +36,8 @@ flutter:
   assets:
     - assets/mine/
     - assets/
+
+flutter_launcher_icons:
+  android: "launcher_icon"        # 生成安卓图标的文件名
+  # ios: true                       # 是否生成iOS图标
+  image_path: "assets/icon.png" 
