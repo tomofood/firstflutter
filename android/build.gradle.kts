@@ -1,25 +1,28 @@
-allprojects {repositories {
-        // 阿里云镜像
-        maven {
-            url = uri("https://maven.aliyun.com/repository/public")
-        }
-        maven {
-            url = uri("https://maven.aliyun.com/repository/google")
-        }
-        maven {
-            url = uri("https://maven.aliyun.com/repository/jcenter")
-        }
-        // 腾讯云镜像（备用）
-        maven {
-            url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public")
-        }
-        // 华为云镜像（备用）
-        maven {
-            url = uri("https://repo.huaweicloud.com/repository/maven")
-        }
-        // 原始仓库作为最后备选
+allprojects {
+  repositories {
         google()
         mavenCentral()
+        // 阿里云镜像
+        // maven {
+        //     url = uri("https://maven.aliyun.com/repository/public")
+        // }
+        // maven {
+        //     url = uri("https://maven.aliyun.com/repository/google")
+        // }
+        // maven {
+        //     url = uri("https://maven.aliyun.com/repository/jcenter")
+        // }
+        // 腾讯云镜像（备用）
+        // maven {
+        //     url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public")
+        // }
+        // 华为云镜像（备用）
+        // maven {
+        //     url = uri("https://repo.huaweicloud.com/repository/maven")
+        // }
+        // 原始仓库作为最后备选
+        // google()
+        // mavenCentral()
     }
     }
 
