@@ -1,4 +1,4 @@
-name: Build HarmonyOS App with Fastforge
+name: Build HarmonyOS App
 
 on:
   # push:
