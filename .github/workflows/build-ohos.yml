@@ -103,7 +103,7 @@ jobs:
       
       - name: Build HarmonyOS HAP
         run: |
-          fastforge package --platform ohos --targets app --build-flavor release
+          fastforge package --platform ohos --targets app
       
       - name: Debug build output
         run: |
