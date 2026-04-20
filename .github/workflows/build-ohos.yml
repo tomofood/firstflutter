@@ -39,9 +39,9 @@ jobs:
       - name: Setup signing files
         run: |
           mkdir -p ohos/signing
-          echo "${{ secrets.SIGNING_CERT_BASE64 }}" | base64 --decode > ohos/signing/release.cer
-          echo "${{ secrets.SIGNING_P12_BASE64 }}" | base64 --decode > ohos/signing/release.p12
-          echo "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
+          printf '%s' "${{ secrets.SIGNING_CERT_BASE64 }}" | base64 --decode > ohos/signing/release.cer
+          printf '%s' "${{ secrets.SIGNING_P12_BASE64 }}" | base64 --decode > ohos/signing/release.p12
+          printf '%s' "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
           ls -la ohos/signing/
       
       - name: Create ohos directory structure
@@ -94,7 +94,6 @@ jobs:
           echo '}' >> ohos/build-profile.json5
           
           echo "build-profile.json5 created"
-          cat ohos/build-profile.json5 | head -20
       
       - name: Install Fastforge
         run: |
@@ -104,21 +103,35 @@ jobs:
       
       - name: Build HarmonyOS HAP
         run: |
-          fastforge package --platform ohos --targets app --build-flavor release --output dist/
+          fastforge package --platform ohos --targets app --build-flavor release
       
-      - name: List artifacts
+      - name: Debug build output
         run: |
-          echo "=== Build artifacts ==="
-          ls -la dist/ || echo "dist directory not found"
-          find . -name "*.hap" -o -name "*.app" 2>/dev/null || true
+          echo "=== Current directory contents ==="
+          ls -la
+          
+          echo "=== dist directory ==="
+          ls -la dist/ 2>/dev/null || echo "dist not found"
+          
+          echo "=== build directory ==="
+          ls -la build/ 2>/dev/null || echo "build not found"
+          
+          echo "=== Searching for .hap files ==="
+          find . -name "*.hap" -type f 2>/dev/null || echo "No .hap files found"
+          
+          echo "=== Searching for .app files ==="
+          find . -name "*.app" -type f 2>/dev/null || echo "No .app files found"
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ohos-app-release
           path: |
-            dist/*.hap
-            dist/*.app
+            **/*.hap
+            **/*.app
+            dist/
+            build/
+          if-no-files-found: warn
           retention-days: 30
       
       - name: Cleanup
