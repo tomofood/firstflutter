@@ -10,14 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # ==================== 1. 设置 JDK 17 ====================
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
       
-      # ==================== 2. 缓存 Flutter SDK（关键优化） ====================
       - name: Cache Flutter SDK
         id: cache-flutter
         uses: actions/cache@v4
@@ -25,18 +23,15 @@ jobs:
           path: ./flutter_ohos
           key: flutter-ohos-3.27.4-${{ runner.os }}
       
-      # ==================== 3. 安装鸿蒙版 Flutter SDK（仅缓存未命中时执行） ====================
       - name: Setup Flutter (OHOS version)
         if: steps.cache-flutter.outputs.cache-hit != 'true'
         run: |
-          # 直接使用 GitHub 克隆 GitHub 上的仓库，速度最快
           git clone https://github.com/openharmony-sig/flutter_flutter.git
           cd flutter_flutter
           git checkout flutter-ohos-3.27.4
           cd ..
           mv flutter_flutter flutter_ohos
       
-      # ==================== 4. 设置 Flutter 环境变量 ====================
       - name: Setup Flutter environment
         run: |
           echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
@@ -44,7 +39,6 @@ jobs:
           flutter --version
           dart --version
       
-      # ==================== 5. 缓存 Dart 依赖 ====================
       - name: Cache Dart dependencies
         uses: actions/cache@v4
         with:
@@ -56,11 +50,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-dart-
       
-      # ==================== 6. 获取项目依赖 ====================
       - name: Get dependencies
         run: flutter pub get
       
-      # ==================== 7. 还原签名文件 ====================
       - name: Setup signing files
         run: |
           mkdir -p ohos/signing
@@ -69,57 +61,67 @@ jobs:
           echo "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
           ls -la ohos/signing/
       
-      # ==================== 8. 配置签名 ====================
       - name: Configure signing
         run: |
-          cat > ohos/build-profile.json5 << 'EOF'
-      {
-        "app": {
-          "signingConfigs": [{
-            "name": "release",
-            "type": "HarmonyOS",
-            "material": {
-              "certpath": "signing/release.cer",
-              "storePassword": "${{ secrets.STORE_PASSWORD }}",
-              "keyAlias": "${{ secrets.KEY_ALIAS }}",
-              "keyPassword": "${{ secrets.KEY_PASSWORD }}",
-              "profile": "signing/release.p7b",
-              "signAlg": "SHA256withECDSA",
-              "storeFile": "signing/release.p12"
-            }
-          }],
-          "products": [{
-            "name": "default",
-            "signingConfig": "release",
-            "compileSdkVersion": "9",
-            "compatibleSdkVersion": "9",
-            "runtimeOS": "HarmonyOS"
-          }]
-        },
-        "modules": [{
-          "name": "entry",
-          "srcPath": "./entry",
-          "targets": [{
-            "name": "default",
-            "applyToProducts": ["default"]
-          }]
-        }]
-      }
-      EOF
+          cat > ohos/build-profile.json5 << "EOF"
+          {
+            "app": {
+              "signingConfigs": [
+                {
+                  "name": "release",
+                  "type": "HarmonyOS",
+                  "material": {
+                    "certpath": "signing/release.cer",
+                    "storePassword": "${{ secrets.STORE_PASSWORD }}",
+                    "keyAlias": "${{ secrets.KEY_ALIAS }}",
+                    "keyPassword": "${{ secrets.KEY_PASSWORD }}",
+                    "profile": "signing/release.p7b",
+                    "signAlg": "SHA256withECDSA",
+                    "storeFile": "signing/release.p12"
+                  }
+                }
+              ],
+              "products": [
+                {
+                  "name": "default",
+                  "signingConfig": "release",
+                  "compileSdkVersion": "9",
+                  "compatibleSdkVersion": "9",
+                  "runtimeOS": "HarmonyOS"
+                }
+              ]
+            },
+            "modules": [
+              {
+                "name": "entry",
+                "srcPath": "./entry",
+                "targets": [
+                  {
+                    "name": "default",
+                    "applyToProducts": ["default"]
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
       
-      # ==================== 9. 安装 Fastforge ====================
       - name: Install Fastforge
         run: |
           dart pub global activate fastforge
           echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
           fastforge --version
       
-      # ==================== 10. 构建 HAP ====================
       - name: Build HarmonyOS HAP
         run: |
           fastforge package --platform ohos --targets app --build-flavor release --output dist/
       
-      # ==================== 11. 上传产物 ====================
+      - name: List artifacts
+        run: |
+          echo "=== Build artifacts ==="
+          ls -la dist/ || echo "dist directory not found"
+          find . -name "*.hap" -o -name "*.app" 2>/dev/null || true
+      
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -129,7 +131,6 @@ jobs:
             dist/*.app
           retention-days: 30
       
-      # ==================== 12. 清理 ====================
       - name: Cleanup
         if: always()
         run: rm -rf ohos/signing/
