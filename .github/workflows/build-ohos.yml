@@ -34,13 +34,30 @@ jobs:
       
       - name: Setup Flutter environment
         run: |
-          # 立即设置 PATH（当前步骤生效）
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
-          # 写入 GITHUB_PATH 供后续步骤使用
           echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
-          # 验证
           flutter --version
           dart --version
+      
+      # 新增：下载并配置鸿蒙 SDK
+      - name: Setup HarmonyOS SDK
+        run: |
+          # 创建 SDK 目录
+          mkdir -p ${{ github.workspace }}/ohos-sdk
+          
+          # 下载鸿蒙 SDK Command Line Tools（使用华为镜像）
+          cd ${{ github.workspace }}/ohos-sdk
+          wget https://contentcenter-vali-drcn.dbankcdn.com/pub_1/commandline-tools/5.0.0/command-line-tools-linux-x64-5.0.0.301.zip
+          
+          # 解压
+          unzip -q command-line-tools-linux-x64-5.0.0.301.zip
+          
+          # 设置环境变量
+          echo "HOS_SDK_HOME=${{ github.workspace }}/ohos-sdk" >> $GITHUB_ENV
+          echo "${{ github.workspace }}/ohos-sdk/command-line-tools/bin" >> $GITHUB_PATH
+          
+          # 验证
+          ls -la ${{ github.workspace }}/ohos-sdk/
       
       - name: Cache Dart dependencies
         uses: actions/cache@v4
@@ -56,6 +73,7 @@ jobs:
       - name: Get dependencies
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
+          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
           flutter pub get
       
       - name: Setup signing files
@@ -111,6 +129,7 @@ jobs:
       - name: Build HarmonyOS HAP
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
+          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
           flutter build hap --release
       
       - name: Upload artifacts
