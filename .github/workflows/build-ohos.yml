@@ -2,6 +2,10 @@ name: Build HarmonyOS App
 
 on:
   workflow_dispatch:
+  # push:
+  #   branches: [ main, master ]
+  # pull_request:
+  #   branches: [ main, master ]
 
 jobs:
   build:
@@ -16,11 +20,50 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
+      - name: Download Command Line Tools
+        run: |
+          mkdir -p ${{ github.workspace }}/command-line-tools
+          cd ${{ github.workspace }}/command-line-tools
+          echo "Downloading Command Line Tools from secret URL..."
+          wget -q --show-progress --header "User-Agent: Mozilla/5.0" "${{ secrets.CMDLINE_TOOLS_URL }}" -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          rm cmdline-tools.zip
+          echo "Command Line Tools downloaded and extracted."
+          ls -la
+      
+      - name: Cache HarmonyOS SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/ohos-sdk
+          key: ohos-sdk-6.1.0-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ohos-sdk-6.1.0-${{ runner.os }}-
+      
+      - name: Install HarmonyOS SDK via sdkmgr
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          export PATH="${{ github.workspace }}/command-line-tools/bin:$PATH"
+          echo "${{ github.workspace }}/command-line-tools/bin" >> $GITHUB_PATH
+          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME" >> $GITHUB_ENV
+          echo "Installing SDK components (this may take a few minutes)..."
+          yes | sdkmgr install "ets:12" || true
+          yes | sdkmgr install "ohos-sdk:5.0.0" || true
+          echo "SDK installation finished."
+      
+      - name: Set SDK Environment
+        run: |
+          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME" >> $GITHUB_ENV
+          echo "${{ github.workspace }}/command-line-tools/bin" >> $GITHUB_PATH
+          echo "SDK environment configured."
+      
       - name: Cache Flutter OHOS SDK
         id: cache-flutter
         uses: actions/cache@v4
         with:
-          path: ./flutter_ohos
+          path: ${{ github.workspace }}/flutter_ohos
           key: flutter-ohos-3.27.4-${{ runner.os }}
       
       - name: Setup Flutter OHOS SDK
@@ -38,26 +81,6 @@ jobs:
           echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
           flutter --version
           dart --version
-      
-      # 新增：下载并配置鸿蒙 SDK
-      - name: Setup HarmonyOS SDK
-        run: |
-          # 创建 SDK 目录
-          mkdir -p ${{ github.workspace }}/ohos-sdk
-          
-          # 下载鸿蒙 SDK Command Line Tools（使用华为镜像）
-          cd ${{ github.workspace }}/ohos-sdk
-          wget https://contentcenter-vali-drcn.dbankcdn.com/pub_1/commandline-tools/5.0.0/command-line-tools-linux-x64-5.0.0.301.zip
-          
-          # 解压
-          unzip -q command-line-tools-linux-x64-5.0.0.301.zip
-          
-          # 设置环境变量
-          echo "HOS_SDK_HOME=${{ github.workspace }}/ohos-sdk" >> $GITHUB_ENV
-          echo "${{ github.workspace }}/ohos-sdk/command-line-tools/bin" >> $GITHUB_PATH
-          
-          # 验证
-          ls -la ${{ github.workspace }}/ohos-sdk/
       
       - name: Cache Dart dependencies
         uses: actions/cache@v4
@@ -123,8 +146,7 @@ jobs:
           echo '    }' >> ohos/build-profile.json5
           echo '  ]' >> ohos/build-profile.json5
           echo '}' >> ohos/build-profile.json5
-          
-          echo "build-profile.json5 created"
+          echo "build-profile.json5 configured"
       
       - name: Build HarmonyOS HAP
         run: |
@@ -132,11 +154,25 @@ jobs:
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
           flutter build hap --release
       
+      - name: Find and upload artifacts
+        run: |
+          echo "=== Build artifacts ==="
+          find . -name "*.hap" -type f 2>/dev/null || echo "No .hap files found"
+          find . -name "*.app" -type f 2>/dev/null || echo "No .app files found"
+      
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ohos-app-release
           path: |
-            build/ohos/hap/*.hap
             **/*.hap
+            **/*.app
+            build/ohos/hap/
+          if-no-files-found: warn
           retention-days: 30
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf ohos/signing/
+          echo "Cleanup completed"
