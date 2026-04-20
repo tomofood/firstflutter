@@ -16,11 +16,28 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - name: Cache Flutter OHOS SDK
+        id: cache-flutter
+        uses: actions/cache@v4
         with:
-          flutter-version: '3.27.0'
-          channel: 'stable'
+          path: ./flutter_ohos
+          key: flutter-ohos-3.27.4-${{ runner.os }}
+      
+      - name: Setup Flutter OHOS SDK
+        if: steps.cache-flutter.outputs.cache-hit != 'true'
+        run: |
+          git clone https://gitcode.com/openharmony-tpc/flutter_flutter.git
+          cd flutter_flutter
+          git checkout br_3.27.4-ohos-1.0.4
+          cd ..
+          mv flutter_flutter flutter_ohos
+      
+      - name: Setup Flutter environment
+        run: |
+          echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
+          echo "${{ github.workspace }}/flutter_ohos" >> $GITHUB_PATH
+          flutter --version
+          dart --version
       
       - name: Cache Dart dependencies
         uses: actions/cache@v4
@@ -44,12 +61,6 @@ jobs:
           printf '%s' "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
           ls -la ohos/signing/
       
-      - name: Create ohos directory structure
-        run: |
-          mkdir -p ohos/entry
-          mkdir -p ohos/entry/src/main/ets/pages
-          mkdir -p ohos/entry/src/main/resources/base/media
-      
       - name: Configure build-profile.json5
         run: |
           echo '{' > ohos/build-profile.json5
@@ -72,10 +83,7 @@ jobs:
           echo '    "products": [' >> ohos/build-profile.json5
           echo '      {' >> ohos/build-profile.json5
           echo '        "name": "default",' >> ohos/build-profile.json5
-          echo '        "signingConfig": "release",' >> ohos/build-profile.json5
-          echo '        "compileSdkVersion": "9",' >> ohos/build-profile.json5
-          echo '        "compatibleSdkVersion": "9",' >> ohos/build-profile.json5
-          echo '        "runtimeOS": "HarmonyOS"' >> ohos/build-profile.json5
+          echo '        "signingConfig": "release"' >> ohos/build-profile.json5
           echo '      }' >> ohos/build-profile.json5
           echo '    ]' >> ohos/build-profile.json5
           echo '  },' >> ohos/build-profile.json5
@@ -95,45 +103,15 @@ jobs:
           
           echo "build-profile.json5 created"
       
-      - name: Install Fastforge
-        run: |
-          dart pub global activate fastforge
-          echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
-          fastforge --version
-      
       - name: Build HarmonyOS HAP
         run: |
-          fastforge package --platform ohos --targets app
-      
-      - name: Debug build output
-        run: |
-          echo "=== Current directory contents ==="
-          ls -la
-          
-          echo "=== dist directory ==="
-          ls -la dist/ 2>/dev/null || echo "dist not found"
-          
-          echo "=== build directory ==="
-          ls -la build/ 2>/dev/null || echo "build not found"
-          
-          echo "=== Searching for .hap files ==="
-          find . -name "*.hap" -type f 2>/dev/null || echo "No .hap files found"
-          
-          echo "=== Searching for .app files ==="
-          find . -name "*.app" -type f 2>/dev/null || echo "No .app files found"
+          flutter build hap --release
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ohos-app-release
           path: |
+            build/ohos/hap/*.hap
             **/*.hap
-            **/*.app
-            dist/
-            build/
-          if-no-files-found: warn
           retention-days: 30
-      
-      - name: Cleanup
-        if: always()
-        run: rm -rf ohos/signing/
