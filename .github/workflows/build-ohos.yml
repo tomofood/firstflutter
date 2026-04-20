@@ -2,10 +2,10 @@ name: Build HarmonyOS App
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [ main, master ]
-  # pull_request:
-  #   branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
   build:
@@ -44,9 +44,7 @@ jobs:
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           export PATH="${{ github.workspace }}/command-line-tools/bin:$PATH"
-          echo "${{ github.workspace }}/command-line-tools/bin" >> $GITHUB_PATH
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          echo "HOS_SDK_HOME=$HOS_SDK_HOME" >> $GITHUB_ENV
           echo "Installing SDK components (this may take a few minutes)..."
           yes | sdkmgr install "ets:12" || true
           yes | sdkmgr install "ohos-sdk:5.0.0" || true
@@ -54,8 +52,7 @@ jobs:
       
       - name: Set SDK Environment
         run: |
-          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          echo "HOS_SDK_HOME=$HOS_SDK_HOME" >> $GITHUB_ENV
+          echo "HOS_SDK_HOME=${{ github.workspace }}/ohos-sdk" >> $GITHUB_ENV
           echo "${{ github.workspace }}/command-line-tools/bin" >> $GITHUB_PATH
           echo "SDK environment configured."
       
@@ -77,10 +74,17 @@ jobs:
       
       - name: Setup Flutter environment
         run: |
-          export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
           echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
+          echo "Flutter environment configured."
+      
+      - name: Verify Flutter and SDK
+        run: |
+          export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
+          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
           flutter --version
           dart --version
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
+          ls -la $HOS_SDK_HOME || echo "SDK directory not found"
       
       - name: Cache Dart dependencies
         uses: actions/cache@v4
@@ -97,6 +101,7 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
           flutter pub get
       
       - name: Setup signing files
@@ -152,6 +157,7 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
           flutter build hap --release
       
       - name: Find and upload artifacts
