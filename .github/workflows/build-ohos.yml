@@ -2,9 +2,9 @@ name: Build HarmonyOS App
 
 on:
   # push:
-  #   branches: [ main,master, develop ]
+  #   branches: [ main, master, develop ]
   # pull_request:
-  #   branches: [ main,master ]
+  #   branches: [ main, master ]
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'  # 使用支持鸿蒙的版本
+          flutter-version: '3.22.0'
           channel: 'stable'
       
       # 3. 设置 JDK 17（鸿蒙构建必需）
@@ -63,8 +63,7 @@ jobs:
             exit 1
           fi
           
-          # 使用 jq 或 sed 修改配置文件（这里使用 sed 进行替换）
-          # 注意：这里假设 build-profile.json5 已有基本结构
+          # 生成带签名的 build-profile.json5
           cat > ohos/build-profile.json5 << 'EOF'
       {
         "app": {
@@ -108,7 +107,6 @@ jobs:
       }
       EOF
           
-          # 显示配置内容（密码会被自动隐藏）
           echo "build-profile.json5 configured successfully"
       
       # 8. 安装 Fastforge 工具
@@ -132,9 +130,6 @@ jobs:
             --targets app \
             --build-flavor release \
             --output dist/
-          
-          # 或者使用更简短的命令
-          # fastforge package -p ohos -t app -f release
       
       # 10. 列出构建产物
       - name: List artifacts
@@ -143,7 +138,7 @@ jobs:
           ls -la dist/ || echo "dist directory not found"
           find . -name "*.hap" -o -name "*.app" 2>/dev/null || true
       
-      # 11. 上传构建产物（可选）
+      # 11. 上传构建产物
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -151,9 +146,9 @@ jobs:
           path: |
             dist/*.hap
             dist/*.app
-          retention-days: 30  # 保留30天
+          retention-days: 30
       
-      # 12. 清理敏感文件（可选，增加安全性）
+      # 12. 清理敏感文件
       - name: Cleanup sensitive files
         if: always()
         run: |
