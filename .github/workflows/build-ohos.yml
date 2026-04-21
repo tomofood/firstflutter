@@ -1,42 +1,36 @@
 name: Build HarmonyOS App with Fastforge
 
 on:
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. 检出代码
       - uses: actions/checkout@v4
       
-      # 2. 设置 JDK 17 (鸿蒙构建必需)
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
       
-      # 3. 设置 Flutter 环境 (使用官方稳定版即可)
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'  # 或更新版本，Fastforge 会处理鸿蒙适配
+          flutter-version: '3.22.0'
           channel: 'stable'
       
-      # 4. 获取项目依赖
       - name: Get dependencies
         run: flutter pub get
       
-      # 5. 安装 Fastforge 工具
       - name: Install Fastforge
         run: |
           dart pub global activate fastforge
           echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
           fastforge --version
       
-      # 6. 准备签名文件 (从 GitHub Secrets 还原)
       - name: Setup signing files
         run: |
           mkdir -p ohos/signing
@@ -45,58 +39,51 @@ jobs:
           printf '%s' "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
           ls -la ohos/signing/
       
-      # 7. 配置签名信息到鸿蒙项目配置文件
-      - name: Configure signing in build-profile.json5
+      - name: Configure build-profile.json5
         run: |
-          cat > ohos/build-profile.json5 << 'EOF'
-      {
-        "app": {
-          "signingConfigs": [
-            {
-              "name": "release",
-              "type": "HarmonyOS",
-              "material": {
-                "certpath": "signing/release.cer",
-                "storePassword": "${{ secrets.STORE_PASSWORD }}",
-                "keyAlias": "${{ secrets.KEY_ALIAS }}",
-                "keyPassword": "${{ secrets.KEY_PASSWORD }}",
-                "profile": "signing/release.p7b",
-                "signAlg": "SHA256withECDSA",
-                "storeFile": "signing/release.p12"
-              }
-            }
-          ],
-          "products": [
-            {
-              "name": "default",
-              "signingConfig": "release"
-            }
-          ]
-        },
-        "modules": [
-          {
-            "name": "entry",
-            "srcPath": "./entry",
-            "targets": [
-              {
-                "name": "default",
-                "applyToProducts": ["default"]
-              }
-            ]
-          }
-        ]
-      }
-      EOF
-          
-          echo "build-profile.json5 configured successfully"
+          echo '{' > ohos/build-profile.json5
+          echo '  "app": {' >> ohos/build-profile.json5
+          echo '    "signingConfigs": [' >> ohos/build-profile.json5
+          echo '      {' >> ohos/build-profile.json5
+          echo '        "name": "release",' >> ohos/build-profile.json5
+          echo '        "type": "HarmonyOS",' >> ohos/build-profile.json5
+          echo '        "material": {' >> ohos/build-profile.json5
+          echo '          "certpath": "signing/release.cer",' >> ohos/build-profile.json5
+          echo '          "storePassword": "'"${{ secrets.STORE_PASSWORD }}"'",' >> ohos/build-profile.json5
+          echo '          "keyAlias": "'"${{ secrets.KEY_ALIAS }}"'",' >> ohos/build-profile.json5
+          echo '          "keyPassword": "'"${{ secrets.KEY_PASSWORD }}"'",' >> ohos/build-profile.json5
+          echo '          "profile": "signing/release.p7b",' >> ohos/build-profile.json5
+          echo '          "signAlg": "SHA256withECDSA",' >> ohos/build-profile.json5
+          echo '          "storeFile": "signing/release.p12"' >> ohos/build-profile.json5
+          echo '        }' >> ohos/build-profile.json5
+          echo '      }' >> ohos/build-profile.json5
+          echo '    ],' >> ohos/build-profile.json5
+          echo '    "products": [' >> ohos/build-profile.json5
+          echo '      {' >> ohos/build-profile.json5
+          echo '        "name": "default",' >> ohos/build-profile.json5
+          echo '        "signingConfig": "release"' >> ohos/build-profile.json5
+          echo '      }' >> ohos/build-profile.json5
+          echo '    ]' >> ohos/build-profile.json5
+          echo '  },' >> ohos/build-profile.json5
+          echo '  "modules": [' >> ohos/build-profile.json5
+          echo '    {' >> ohos/build-profile.json5
+          echo '      "name": "entry",' >> ohos/build-profile.json5
+          echo '      "srcPath": "./entry",' >> ohos/build-profile.json5
+          echo '      "targets": [' >> ohos/build-profile.json5
+          echo '        {' >> ohos/build-profile.json5
+          echo '          "name": "default",' >> ohos/build-profile.json5
+          echo '          "applyToProducts": ["default"]' >> ohos/build-profile.json5
+          echo '        }' >> ohos/build-profile.json5
+          echo '      ]' >> ohos/build-profile.json5
+          echo '    }' >> ohos/build-profile.json5
+          echo '  ]' >> ohos/build-profile.json5
+          echo '}' >> ohos/build-profile.json5
+          echo "build-profile.json5 configured"
       
-      # 8. 使用 Fastforge 一键打包鸿蒙应用
       - name: Build HarmonyOS HAP
         run: |
-          # 直接使用 fastforge 命令打包，它会处理所有底层细节
           fastforge package --platform ohos --targets app --build-flavor release
       
-      # 9. 上传构建产物
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -107,7 +94,6 @@ jobs:
             **/*.hap
           retention-days: 30
       
-      # 10. 清理敏感文件
       - name: Cleanup
         if: always()
         run: rm -rf ohos/signing/
