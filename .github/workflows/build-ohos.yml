@@ -24,34 +24,53 @@ jobs:
           wget -q --show-progress --header "User-Agent: Mozilla/5.0" "${{ secrets.CMDLINE_TOOLS_URL }}" -O cmdline-tools.zip
           unzip -q cmdline-tools.zip
           rm cmdline-tools.zip
+          echo "Extracted contents:"
+          ls -la
+      
+      - name: Debug directory structure
+        run: |
+          echo "=== Directory tree (first 3 levels) ==="
+          find ${{ github.workspace }}/command-line-tools -maxdepth 3 -type d 2>/dev/null
+          echo ""
+          echo "=== Searching for sdkmgr ==="
+          find ${{ github.workspace }}/command-line-tools -name "sdkmgr" -type f 2>/dev/null
+          echo ""
+          echo "=== Searching for hvigorw ==="
+          find ${{ github.workspace }}/command-line-tools -name "hvigorw" -type f 2>/dev/null
+          echo ""
+          echo "=== Root directory listing ==="
+          ls -la ${{ github.workspace }}/command-line-tools/
+          echo ""
+          echo "=== If there's a nested directory ==="
+          if [ -d "${{ github.workspace }}/command-line-tools/command-line-tools" ]; then
+            echo "Nested command-line-tools directory found!"
+            ls -la ${{ github.workspace }}/command-line-tools/command-line-tools/
+          fi
+      
+      - name: Fix directory structure and setup PATH
+        run: |
+          CLI_DIR="${{ github.workspace }}/command-line-tools"
           
-          # 修复目录结构：如果解压后是 command-line-tools/command-line-tools/，则移动到正确位置
-          if [ -d "command-line-tools" ]; then
-            mv command-line-tools/* ./
-            rm -rf command-line-tools
+          # 如果存在嵌套的 command-line-tools 目录，则移动内容
+          if [ -d "$CLI_DIR/command-line-tools" ]; then
+            echo "Moving nested command-line-tools contents up..."
+            mv $CLI_DIR/command-line-tools/* $CLI_DIR/
+            rm -rf $CLI_DIR/command-line-tools
           fi
           
-          echo "Command Line Tools extracted to:"
-          ls -la
-          echo "Checking bin directory:"
-          ls -la bin/ || echo "bin directory not found"
-      
-      - name: Setup Command Line Tools PATH
-        run: |
-          # 直接设置 PATH 到 bin 目录
-          CLI_TOOLS_PATH="${{ github.workspace }}/command-line-tools/bin"
-          echo "CLI_TOOLS_PATH=$CLI_TOOLS_PATH"
-          echo "$CLI_TOOLS_PATH" >> $GITHUB_PATH
-          export PATH="$CLI_TOOLS_PATH:$PATH"
-          
-          # 验证 sdkmgr 是否存在
-          if command -v sdkmgr &> /dev/null; then
-            echo "sdkmgr found at: $(which sdkmgr)"
+          # 查找 sdkmgr 的实际位置
+          SDKMGR_PATH=$(find $CLI_DIR -name "sdkmgr" -type f 2>/dev/null | head -1)
+          if [ -n "$SDKMGR_PATH" ]; then
+            SDKMGR_DIR=$(dirname "$SDKMGR_PATH")
+            echo "sdkmgr found at: $SDKMGR_PATH"
+            echo "Adding to PATH: $SDKMGR_DIR"
+            echo "$SDKMGR_DIR" >> $GITHUB_PATH
+            export PATH="$SDKMGR_DIR:$PATH"
             sdkmgr --version || true
           else
-            echo "ERROR: sdkmgr not found!"
-            echo "Searching for sdkmgr..."
-            find ${{ github.workspace }}/command-line-tools -name "sdkmgr" -type f 2>/dev/null
+            echo "ERROR: sdkmgr not found in any location!"
+            echo "Full directory listing:"
+            find $CLI_DIR -type f 2>/dev/null
             exit 1
           fi
       
@@ -67,12 +86,21 @@ jobs:
       - name: Install HarmonyOS SDK via sdkmgr
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          export PATH="${{ github.workspace }}/command-line-tools/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
           mkdir -p $HOS_SDK_HOME
           
+          # 找到 sdkmgr
+          SDKMGR_PATH=$(find ${{ github.workspace }}/command-line-tools -name "sdkmgr" -type f 2>/dev/null | head -1)
+          if [ -z "$SDKMGR_PATH" ]; then
+            echo "ERROR: sdkmgr not found!"
+            exit 1
+          fi
+          
+          SDKMGR_DIR=$(dirname "$SDKMGR_PATH")
+          export PATH="$SDKMGR_DIR:$PATH"
+          
           echo "Installing SDK components (this may take a few minutes)..."
-          echo "sdkmgr location: $(which sdkmgr)"
+          echo "Using sdkmgr at: $(which sdkmgr)"
           
           # 查看可用的组件
           sdkmgr list --remote || true
