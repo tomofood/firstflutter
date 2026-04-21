@@ -2,10 +2,6 @@ name: Build HarmonyOS App
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
 
 jobs:
   build:
@@ -45,16 +41,41 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/command-line-tools/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
+          mkdir -p $HOS_SDK_HOME
           echo "Installing SDK components (this may take a few minutes)..."
+          # 先查看可用的组件
+          sdkmgr list --remote || true
+          # 安装必要的组件
           yes | sdkmgr install "ets:12" || true
           yes | sdkmgr install "ohos-sdk:5.0.0" || true
+          yes | sdkmgr install "toolchains:5.0.0" || true
           echo "SDK installation finished."
+      
+      - name: Debug SDK structure
+        run: |
+          echo "=== HOS_SDK_HOME location ==="
+          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
+          ls -la $HOS_SDK_HOME || echo "SDK directory not found"
+          echo ""
+          echo "=== SDK directory structure ==="
+          find $HOS_SDK_HOME -maxdepth 3 -type d 2>/dev/null || echo "Cannot find SDK directory"
+          echo ""
+          echo "=== Command line tools location ==="
+          ls -la ${{ github.workspace }}/command-line-tools/
       
       - name: Set SDK Environment
         run: |
-          echo "HOS_SDK_HOME=${{ github.workspace }}/ohos-sdk" >> $GITHUB_ENV
+          # 尝试找到实际的 SDK 路径
+          SDK_PATH="${{ github.workspace }}/ohos-sdk"
+          if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
+            SDK_PATH="${{ github.workspace }}/ohos-sdk/sdk"
+          elif [ -d "${{ github.workspace }}/ohos-sdk/ohos-sdk" ]; then
+            SDK_PATH="${{ github.workspace }}/ohos-sdk/ohos-sdk"
+          fi
+          echo "HOS_SDK_HOME=$SDK_PATH" >> $GITHUB_ENV
           echo "${{ github.workspace }}/command-line-tools/bin" >> $GITHUB_PATH
-          echo "SDK environment configured."
+          echo "SDK environment configured with HOS_SDK_HOME=$SDK_PATH"
       
       - name: Cache Flutter OHOS SDK
         id: cache-flutter
@@ -77,15 +98,6 @@ jobs:
           echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
           echo "Flutter environment configured."
       
-      - name: Verify Flutter and SDK
-        run: |
-          export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
-          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          flutter --version
-          dart --version
-          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
-          ls -la $HOS_SDK_HOME || echo "SDK directory not found"
-      
       - name: Cache Dart dependencies
         uses: actions/cache@v4
         with:
@@ -101,7 +113,11 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
+          # 如果 sdk 在子目录中，调整路径
+          if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
+            export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk/sdk"
+          fi
+          echo "Using HOS_SDK_HOME=$HOS_SDK_HOME"
           flutter pub get
       
       - name: Setup signing files
@@ -157,14 +173,11 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
+          if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
+            export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk/sdk"
+          fi
+          echo "Building with HOS_SDK_HOME=$HOS_SDK_HOME"
           flutter build hap --release
-      
-      - name: Find and upload artifacts
-        run: |
-          echo "=== Build artifacts ==="
-          find . -name "*.hap" -type f 2>/dev/null || echo "No .hap files found"
-          find . -name "*.app" -type f 2>/dev/null || echo "No .app files found"
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -176,9 +189,3 @@ jobs:
             build/ohos/hap/
           if-no-files-found: warn
           retention-days: 30
-      
-      - name: Cleanup
-        if: always()
-        run: |
-          rm -rf ohos/signing/
-          echo "Cleanup completed"
