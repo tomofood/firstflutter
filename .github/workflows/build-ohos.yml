@@ -24,8 +24,36 @@ jobs:
           wget -q --show-progress --header "User-Agent: Mozilla/5.0" "${{ secrets.CMDLINE_TOOLS_URL }}" -O cmdline-tools.zip
           unzip -q cmdline-tools.zip
           rm cmdline-tools.zip
-          echo "Command Line Tools downloaded and extracted."
+          
+          # 修复目录结构：如果解压后是 command-line-tools/command-line-tools/，则移动到正确位置
+          if [ -d "command-line-tools" ]; then
+            mv command-line-tools/* ./
+            rm -rf command-line-tools
+          fi
+          
+          echo "Command Line Tools extracted to:"
           ls -la
+          echo "Checking bin directory:"
+          ls -la bin/ || echo "bin directory not found"
+      
+      - name: Setup Command Line Tools PATH
+        run: |
+          # 直接设置 PATH 到 bin 目录
+          CLI_TOOLS_PATH="${{ github.workspace }}/command-line-tools/bin"
+          echo "CLI_TOOLS_PATH=$CLI_TOOLS_PATH"
+          echo "$CLI_TOOLS_PATH" >> $GITHUB_PATH
+          export PATH="$CLI_TOOLS_PATH:$PATH"
+          
+          # 验证 sdkmgr 是否存在
+          if command -v sdkmgr &> /dev/null; then
+            echo "sdkmgr found at: $(which sdkmgr)"
+            sdkmgr --version || true
+          else
+            echo "ERROR: sdkmgr not found!"
+            echo "Searching for sdkmgr..."
+            find ${{ github.workspace }}/command-line-tools -name "sdkmgr" -type f 2>/dev/null
+            exit 1
+          fi
       
       - name: Cache HarmonyOS SDK
         id: cache-sdk
@@ -42,31 +70,23 @@ jobs:
           export PATH="${{ github.workspace }}/command-line-tools/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
           mkdir -p $HOS_SDK_HOME
+          
           echo "Installing SDK components (this may take a few minutes)..."
-          # 先查看可用的组件
+          echo "sdkmgr location: $(which sdkmgr)"
+          
+          # 查看可用的组件
           sdkmgr list --remote || true
+          
           # 安装必要的组件
           yes | sdkmgr install "ets:12" || true
           yes | sdkmgr install "ohos-sdk:5.0.0" || true
           yes | sdkmgr install "toolchains:5.0.0" || true
+          
           echo "SDK installation finished."
-      
-      - name: Debug SDK structure
-        run: |
-          echo "=== HOS_SDK_HOME location ==="
-          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
-          ls -la $HOS_SDK_HOME || echo "SDK directory not found"
-          echo ""
-          echo "=== SDK directory structure ==="
-          find $HOS_SDK_HOME -maxdepth 3 -type d 2>/dev/null || echo "Cannot find SDK directory"
-          echo ""
-          echo "=== Command line tools location ==="
-          ls -la ${{ github.workspace }}/command-line-tools/
+          ls -la $HOS_SDK_HOME/
       
       - name: Set SDK Environment
         run: |
-          # 尝试找到实际的 SDK 路径
           SDK_PATH="${{ github.workspace }}/ohos-sdk"
           if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
             SDK_PATH="${{ github.workspace }}/ohos-sdk/sdk"
@@ -74,7 +94,6 @@ jobs:
             SDK_PATH="${{ github.workspace }}/ohos-sdk/ohos-sdk"
           fi
           echo "HOS_SDK_HOME=$SDK_PATH" >> $GITHUB_ENV
-          echo "${{ github.workspace }}/command-line-tools/bin" >> $GITHUB_PATH
           echo "SDK environment configured with HOS_SDK_HOME=$SDK_PATH"
       
       - name: Cache Flutter OHOS SDK
@@ -113,7 +132,6 @@ jobs:
         run: |
           export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
           export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          # 如果 sdk 在子目录中，调整路径
           if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
             export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk/sdk"
           fi
