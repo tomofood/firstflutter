@@ -16,21 +16,43 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      # 缓存鸿蒙 Flutter SDK
+      - name: Cache Flutter OHOS SDK
+        id: cache-flutter
+        uses: actions/cache@v4
         with:
-          flutter-version: '3.22.0'
-          channel: 'stable'
+          path: ${{ github.workspace }}/flutter_ohos
+          key: flutter-ohos-3.27.4-${{ runner.os }}
       
+      # 下载鸿蒙专用 Flutter SDK
+      - name: Setup Flutter OHOS SDK
+        if: steps.cache-flutter.outputs.cache-hit != 'true'
+        run: |
+          git clone https://gitcode.com/openharmony-tpc/flutter_flutter.git
+          cd flutter_flutter
+          git checkout br_3.27.4-ohos-1.0.4
+          cd ..
+          mv flutter_flutter flutter_ohos
+      
+      # 设置 Flutter 环境
+      - name: Setup Flutter environment
+        run: |
+          echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
+          flutter --version
+          dart --version
+      
+      # 获取依赖
       - name: Get dependencies
         run: flutter pub get
       
+      # 安装 Fastforge
       - name: Install Fastforge
         run: |
           dart pub global activate fastforge
           echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
           fastforge --version
       
+      # 准备签名文件
       - name: Setup signing files
         run: |
           mkdir -p ohos/signing
@@ -39,6 +61,7 @@ jobs:
           printf '%s' "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
           ls -la ohos/signing/
       
+      # 配置签名
       - name: Configure build-profile.json5
         run: |
           echo '{' > ohos/build-profile.json5
@@ -80,10 +103,12 @@ jobs:
           echo '}' >> ohos/build-profile.json5
           echo "build-profile.json5 configured"
       
+      # 使用 Fastforge 构建
       - name: Build HarmonyOS HAP
         run: |
           fastforge package --platform ohos --targets app --build-flavor release
       
+      # 上传产物
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -94,6 +119,7 @@ jobs:
             **/*.hap
           retention-days: 30
       
+      # 清理
       - name: Cleanup
         if: always()
         run: rm -rf ohos/signing/
