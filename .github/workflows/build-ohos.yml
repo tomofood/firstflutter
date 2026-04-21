@@ -1,171 +1,42 @@
-name: Build HarmonyOS App
+name: Build HarmonyOS App with Fastforge
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
+      # 1. 检出代码
       - uses: actions/checkout@v4
       
+      # 2. 设置 JDK 17 (鸿蒙构建必需)
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Download Command Line Tools
-        run: |
-          mkdir -p ${{ github.workspace }}/command-line-tools
-          cd ${{ github.workspace }}/command-line-tools
-          echo "Downloading Command Line Tools from secret URL..."
-          wget -q --show-progress --header "User-Agent: Mozilla/5.0" "${{ secrets.CMDLINE_TOOLS_URL }}" -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip
-          rm cmdline-tools.zip
-          echo "Extracted contents:"
-          ls -la
-      
-      - name: Debug directory structure
-        run: |
-          echo "=== Directory tree (first 3 levels) ==="
-          find ${{ github.workspace }}/command-line-tools -maxdepth 3 -type d 2>/dev/null
-          echo ""
-          echo "=== Searching for sdkmgr ==="
-          find ${{ github.workspace }}/command-line-tools -name "sdkmgr" -type f 2>/dev/null
-          echo ""
-          echo "=== Searching for hvigorw ==="
-          find ${{ github.workspace }}/command-line-tools -name "hvigorw" -type f 2>/dev/null
-          echo ""
-          echo "=== Root directory listing ==="
-          ls -la ${{ github.workspace }}/command-line-tools/
-          echo ""
-          echo "=== If there's a nested directory ==="
-          if [ -d "${{ github.workspace }}/command-line-tools/command-line-tools" ]; then
-            echo "Nested command-line-tools directory found!"
-            ls -la ${{ github.workspace }}/command-line-tools/command-line-tools/
-          fi
-      
-      - name: Fix directory structure and setup PATH
-        run: |
-          CLI_DIR="${{ github.workspace }}/command-line-tools"
-          
-          # 如果存在嵌套的 command-line-tools 目录，则移动内容
-          if [ -d "$CLI_DIR/command-line-tools" ]; then
-            echo "Moving nested command-line-tools contents up..."
-            mv $CLI_DIR/command-line-tools/* $CLI_DIR/
-            rm -rf $CLI_DIR/command-line-tools
-          fi
-          
-          # 查找 sdkmgr 的实际位置
-          SDKMGR_PATH=$(find $CLI_DIR -name "sdkmgr" -type f 2>/dev/null | head -1)
-          if [ -n "$SDKMGR_PATH" ]; then
-            SDKMGR_DIR=$(dirname "$SDKMGR_PATH")
-            echo "sdkmgr found at: $SDKMGR_PATH"
-            echo "Adding to PATH: $SDKMGR_DIR"
-            echo "$SDKMGR_DIR" >> $GITHUB_PATH
-            export PATH="$SDKMGR_DIR:$PATH"
-            sdkmgr --version || true
-          else
-            echo "ERROR: sdkmgr not found in any location!"
-            echo "Full directory listing:"
-            find $CLI_DIR -type f 2>/dev/null
-            exit 1
-          fi
-      
-      - name: Cache HarmonyOS SDK
-        id: cache-sdk
-        uses: actions/cache@v4
+      # 3. 设置 Flutter 环境 (使用官方稳定版即可)
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          path: ${{ github.workspace }}/ohos-sdk
-          key: ohos-sdk-6.1.0-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ohos-sdk-6.1.0-${{ runner.os }}-
+          flutter-version: '3.22.0'  # 或更新版本，Fastforge 会处理鸿蒙适配
+          channel: 'stable'
       
-      - name: Install HarmonyOS SDK via sdkmgr
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        run: |
-          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          mkdir -p $HOS_SDK_HOME
-          
-          # 找到 sdkmgr
-          SDKMGR_PATH=$(find ${{ github.workspace }}/command-line-tools -name "sdkmgr" -type f 2>/dev/null | head -1)
-          if [ -z "$SDKMGR_PATH" ]; then
-            echo "ERROR: sdkmgr not found!"
-            exit 1
-          fi
-          
-          SDKMGR_DIR=$(dirname "$SDKMGR_PATH")
-          export PATH="$SDKMGR_DIR:$PATH"
-          
-          echo "Installing SDK components (this may take a few minutes)..."
-          echo "Using sdkmgr at: $(which sdkmgr)"
-          
-          # 查看可用的组件
-          sdkmgr list --remote || true
-          
-          # 安装必要的组件
-          yes | sdkmgr install "ets:12" || true
-          yes | sdkmgr install "ohos-sdk:5.0.0" || true
-          yes | sdkmgr install "toolchains:5.0.0" || true
-          
-          echo "SDK installation finished."
-          ls -la $HOS_SDK_HOME/
-      
-      - name: Set SDK Environment
-        run: |
-          SDK_PATH="${{ github.workspace }}/ohos-sdk"
-          if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
-            SDK_PATH="${{ github.workspace }}/ohos-sdk/sdk"
-          elif [ -d "${{ github.workspace }}/ohos-sdk/ohos-sdk" ]; then
-            SDK_PATH="${{ github.workspace }}/ohos-sdk/ohos-sdk"
-          fi
-          echo "HOS_SDK_HOME=$SDK_PATH" >> $GITHUB_ENV
-          echo "SDK environment configured with HOS_SDK_HOME=$SDK_PATH"
-      
-      - name: Cache Flutter OHOS SDK
-        id: cache-flutter
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/flutter_ohos
-          key: flutter-ohos-3.27.4-${{ runner.os }}
-      
-      - name: Setup Flutter OHOS SDK
-        if: steps.cache-flutter.outputs.cache-hit != 'true'
-        run: |
-          git clone https://gitcode.com/openharmony-tpc/flutter_flutter.git
-          cd flutter_flutter
-          git checkout br_3.27.4-ohos-1.0.4
-          cd ..
-          mv flutter_flutter flutter_ohos
-      
-      - name: Setup Flutter environment
-        run: |
-          echo "${{ github.workspace }}/flutter_ohos/bin" >> $GITHUB_PATH
-          echo "Flutter environment configured."
-      
-      - name: Cache Dart dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            .dart_tool
-            .packages
-            ${{ env.PUB_CACHE }}
-          key: ${{ runner.os }}-dart-${{ hashFiles('pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-dart-
-      
+      # 4. 获取项目依赖
       - name: Get dependencies
-        run: |
-          export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
-          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
-            export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk/sdk"
-          fi
-          echo "Using HOS_SDK_HOME=$HOS_SDK_HOME"
-          flutter pub get
+        run: flutter pub get
       
+      # 5. 安装 Fastforge 工具
+      - name: Install Fastforge
+        run: |
+          dart pub global activate fastforge
+          echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+          fastforge --version
+      
+      # 6. 准备签名文件 (从 GitHub Secrets 还原)
       - name: Setup signing files
         run: |
           mkdir -p ohos/signing
@@ -174,64 +45,69 @@ jobs:
           printf '%s' "${{ secrets.SIGNING_PROFILE_BASE64 }}" | base64 --decode > ohos/signing/release.p7b
           ls -la ohos/signing/
       
-      - name: Configure build-profile.json5
+      # 7. 配置签名信息到鸿蒙项目配置文件
+      - name: Configure signing in build-profile.json5
         run: |
-          echo '{' > ohos/build-profile.json5
-          echo '  "app": {' >> ohos/build-profile.json5
-          echo '    "signingConfigs": [' >> ohos/build-profile.json5
-          echo '      {' >> ohos/build-profile.json5
-          echo '        "name": "release",' >> ohos/build-profile.json5
-          echo '        "type": "HarmonyOS",' >> ohos/build-profile.json5
-          echo '        "material": {' >> ohos/build-profile.json5
-          echo '          "certpath": "signing/release.cer",' >> ohos/build-profile.json5
-          echo '          "storePassword": "'"${{ secrets.STORE_PASSWORD }}"'",' >> ohos/build-profile.json5
-          echo '          "keyAlias": "'"${{ secrets.KEY_ALIAS }}"'",' >> ohos/build-profile.json5
-          echo '          "keyPassword": "'"${{ secrets.KEY_PASSWORD }}"'",' >> ohos/build-profile.json5
-          echo '          "profile": "signing/release.p7b",' >> ohos/build-profile.json5
-          echo '          "signAlg": "SHA256withECDSA",' >> ohos/build-profile.json5
-          echo '          "storeFile": "signing/release.p12"' >> ohos/build-profile.json5
-          echo '        }' >> ohos/build-profile.json5
-          echo '      }' >> ohos/build-profile.json5
-          echo '    ],' >> ohos/build-profile.json5
-          echo '    "products": [' >> ohos/build-profile.json5
-          echo '      {' >> ohos/build-profile.json5
-          echo '        "name": "default",' >> ohos/build-profile.json5
-          echo '        "signingConfig": "release"' >> ohos/build-profile.json5
-          echo '      }' >> ohos/build-profile.json5
-          echo '    ]' >> ohos/build-profile.json5
-          echo '  },' >> ohos/build-profile.json5
-          echo '  "modules": [' >> ohos/build-profile.json5
-          echo '    {' >> ohos/build-profile.json5
-          echo '      "name": "entry",' >> ohos/build-profile.json5
-          echo '      "srcPath": "./entry",' >> ohos/build-profile.json5
-          echo '      "targets": [' >> ohos/build-profile.json5
-          echo '        {' >> ohos/build-profile.json5
-          echo '          "name": "default",' >> ohos/build-profile.json5
-          echo '          "applyToProducts": ["default"]' >> ohos/build-profile.json5
-          echo '        }' >> ohos/build-profile.json5
-          echo '      ]' >> ohos/build-profile.json5
-          echo '    }' >> ohos/build-profile.json5
-          echo '  ]' >> ohos/build-profile.json5
-          echo '}' >> ohos/build-profile.json5
-          echo "build-profile.json5 configured"
+          cat > ohos/build-profile.json5 << 'EOF'
+      {
+        "app": {
+          "signingConfigs": [
+            {
+              "name": "release",
+              "type": "HarmonyOS",
+              "material": {
+                "certpath": "signing/release.cer",
+                "storePassword": "${{ secrets.STORE_PASSWORD }}",
+                "keyAlias": "${{ secrets.KEY_ALIAS }}",
+                "keyPassword": "${{ secrets.KEY_PASSWORD }}",
+                "profile": "signing/release.p7b",
+                "signAlg": "SHA256withECDSA",
+                "storeFile": "signing/release.p12"
+              }
+            }
+          ],
+          "products": [
+            {
+              "name": "default",
+              "signingConfig": "release"
+            }
+          ]
+        },
+        "modules": [
+          {
+            "name": "entry",
+            "srcPath": "./entry",
+            "targets": [
+              {
+                "name": "default",
+                "applyToProducts": ["default"]
+              }
+            ]
+          }
+        ]
+      }
+      EOF
+          
+          echo "build-profile.json5 configured successfully"
       
+      # 8. 使用 Fastforge 一键打包鸿蒙应用
       - name: Build HarmonyOS HAP
         run: |
-          export PATH="${{ github.workspace }}/flutter_ohos/bin:$PATH"
-          export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk"
-          if [ -d "${{ github.workspace }}/ohos-sdk/sdk" ]; then
-            export HOS_SDK_HOME="${{ github.workspace }}/ohos-sdk/sdk"
-          fi
-          echo "Building with HOS_SDK_HOME=$HOS_SDK_HOME"
-          flutter build hap --release
+          # 直接使用 fastforge 命令打包，它会处理所有底层细节
+          fastforge package --platform ohos --targets app --build-flavor release
       
+      # 9. 上传构建产物
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ohos-app-release
           path: |
+            dist/*.hap
+            dist/*.app
             **/*.hap
-            **/*.app
-            build/ohos/hap/
-          if-no-files-found: warn
           retention-days: 30
+      
+      # 10. 清理敏感文件
+      - name: Cleanup
+        if: always()
+        run: rm -rf ohos/signing/
